@@ -1,12 +1,14 @@
 from clsvg import bezierShape as bs
 
 STROKE_WIDTH_LIST = {
-    'y': 24,
+    'y': 32,
     'x': 64,
 }
 
 DOT_MIN_HEIGHT = 96
 DOT_IDENT = 32
+
+yRatio = 1
 
 def ellipticalArc(width, height, x):
     pos = bs.Point(width, height)
@@ -26,9 +28,19 @@ def getStrokeWidth(unit):
     }
 
     if unit.x < STROKE_WIDTH_LIST['x']:
-        raise 'undefine'
+        if unit.x > STROKE_WIDTH_LIST['x']/2:
+            sWidth['x'] = unit.x
+        else:
+            raise 'undefine'
+        
+    if unit.y < STROKE_WIDTH_LIST['x']:
+        if unit.y > STROKE_WIDTH_LIST['x']/2:
+            global yRatio
+            yRatio = min(unit.x, unit.y) / STROKE_WIDTH_LIST['x']
+            sWidth['x'] = min(yRatio*1.2, 1) * STROKE_WIDTH_LIST['x']
     if unit.y < STROKE_WIDTH_LIST['y']:
         raise 'undefine'
+    
 
     return sWidth
 
@@ -38,7 +50,6 @@ def stroke_6(strokeWidth, sym):
     V_VAL_1 = 48
 
     xRatio = strokeWidth.x / STROKE_WIDTH_LIST['x']
-    yRatio = strokeWidth.y / STROKE_WIDTH_LIST['y']
     if sym == 'f':
         return {
             'length': 16 * yRatio
@@ -88,7 +99,6 @@ def stroke_6(strokeWidth, sym):
 
 def stroke_2(strokeWidth, sym):
     xRatio = strokeWidth.x / STROKE_WIDTH_LIST['x']
-    yRatio = strokeWidth.y / STROKE_WIDTH_LIST['y']
     if sym == 'f':
         return {
             'h': [
@@ -111,7 +121,7 @@ def stroke_2(strokeWidth, sym):
     elif sym == 'e6':
         return {
             'v': [
-                48 * yRatio,
+                24 * yRatio,
                 32 * yRatio
             ]
         }
@@ -137,10 +147,12 @@ def stroke_9(strokeWidth, sym):
             'head': 16 * xRatio,
             'h': [
                 56 * xRatio,
+                32 * xRatio
             ],
             'v': [
                 64 * xRatio,
                 38 * xRatio,
+                8 * xRatio
             ],
             'ratio': [
                 0.8,
@@ -168,7 +180,7 @@ def stroke_4(strokeWidth, sym):
     xRatio = strokeWidth.x / STROKE_WIDTH_LIST['x']
     if sym == 'hook':
         return {
-            'length': 196,
+            'length': 240 * xRatio,
             'h': [
                 84 * xRatio,
                 32 * xRatio
@@ -176,7 +188,8 @@ def stroke_4(strokeWidth, sym):
             'v': [
                 32 * xRatio,
                 84 * xRatio,
-                24 * xRatio
+                24 * xRatio,
+                24 * xRatio,
             ],
             'ratio': [
                 0.9,
@@ -188,7 +201,6 @@ def stroke_4(strokeWidth, sym):
     
 def stroke_8(strokeWidth, sym):
     xRatio = strokeWidth.x / STROKE_WIDTH_LIST['x']
-    yRatio = strokeWidth.y / STROKE_WIDTH_LIST['y']
     if sym == 'hook':
         return {
             'length': 196,
@@ -233,7 +245,12 @@ def comp_dot(ctrl, pos, strokeWidth, sym, fExtend=0, bExtend=0):
     comp = dot_proto(strokeWidth)
 
     if sym == '3' or sym == '1':
-        sCtrl = bs.BezierCtrl.threePointCtrl(bs.Point(), bs.Point(24, 42), bs.Point(0, 100))
+        if ctrl.lengthAt(1) < 128:
+            sCtrl = bs.BezierCtrl(bs.Point(0, 100))
+            xcenter = 0.5
+        else:
+            sCtrl = bs.BezierCtrl.threePointCtrl(bs.Point(), bs.Point(24, 42), bs.Point(0, 100))
+            xcenter = 0.64
     else:
         raise 'undefine'
     
@@ -241,8 +258,8 @@ def comp_dot(ctrl, pos, strokeWidth, sym, fExtend=0, bExtend=0):
     tempPath.start()
     tempPath.append(sCtrl)
     sCtrl = bs.controlComp(bs.BezierCtrl(ctrl.pos), tempPath, xcenter=0, fExtend=fExtend, bExtend=bExtend)[0]
-    comp = bs.controlComp(sCtrl, comp, pos, xcenter=0.5)
-    return comp, 0.5
+    comp = bs.controlComp(sCtrl, comp, pos, xcenter=xcenter)
+    return comp, xcenter
     
 def comp_rect(width):
     comp = bs.BezierPath()
@@ -292,10 +309,10 @@ def comp_1(strokeWidth, length, sym):
         comp.close()
         return comp, strokeWidth.x / 2 / (STROKE['h'][0] + strokeWidth.x)
     elif sym == 'to':
-        offset = (strokeWidth.x - tailWidth) / 2
-        comp.connect(bs.Point(-offset, length), bs.Point(0, length/2))
+        offset = strokeWidth.x - tailWidth
+        comp.connect(bs.Point(0, length))
         comp.connect(bs.Point(-tailWidth, 0))
-        comp.connect(bs.Point(-offset, -length))
+        comp.connect(bs.Point(-offset, -length), p2=bs.Point(-offset, -length/2))
 
         return comp, 0.5
     elif sym == 'allTo':

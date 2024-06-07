@@ -128,7 +128,7 @@ def extendedInfo(pos, tangent, npath, nctrl, cInfo, strokeWdith):
         startV1 = axis_value(viewX, viewY, axis, True)
         for advance in range(0, len(inaxis_list)):
             distance = abs(inaxis_list[startV1] - inaxis_list[advance])
-            if distance <= axis_value(strokeWdith.x, strokeWdith.y, axis, True) / 2:
+            if distance <= max(strokeWdith.x, strokeWdith.y) / 2:
                 parallel_check.append(advance)
             elif inaxis_list[advance] > inaxis_list[startV1]:
                 break
@@ -138,13 +138,30 @@ def extendedInfo(pos, tangent, npath, nctrl, cInfo, strokeWdith):
         while True:
             for parVal in parallel_check:
                 if parVal == startV1 and j == startV2:
-                    continue
+                    for attrs in in_view(parVal, j, axis):
+                        if [npath, nctrl] == attrs['indexes']:
+                            continue
+                        if attrs['symbol'] != 'd':
+                            if not attrs['padding']:
+                                if (attrs['dir'] == '2' or attrs['dir'] == '8') and axis == 'x':
+                                    continue
+                                elif (attrs['dir'] == '6' or attrs['dir'] == '4') and axis == 'y':
+                                    continue
+                            info['extend'] = 0
+                            break
+                    if 'extend' in info:
+                        break
+                    else:
+                        continue
                 for attrs in in_view(parVal, j, axis):
-                    if attrs['symbol'] != 'd':# or not attrs['padding']:
-                        if j == startV2 and attrs['padding']:
-                            continue
-                        if j == startV2 and tangent.x == 0 and tangent.y > 0:
-                            continue
+                    if attrs['symbol'] != 'd' or not attrs['padding']:
+                        if j == startV2:
+                            if attrs['padding']:
+                                continue
+                            elif (attrs['dir'] == '2' or attrs['dir'] == '8') and axis == 'x':
+                                continue
+                            elif (attrs['dir'] == '6' or attrs['dir'] == '4') and axis == 'y':
+                                continue
                         distance = abs(axis_list[startV2] - axis_list[j])
                         info['extend'] = distance
                         break
@@ -248,6 +265,8 @@ def diagonalInside(p1, p2, npath, nctrl, cInfo):
         for y in range(yv[0]+1, yv[1]):
             for attrs in view[y][x]:
                 if attrs['padding']:
+                    if attrs['symbol'] == 'v':
+                        continue
                     return True
                 for dir in find[i][1]:
                     if attrs['dir'] == dir and attrs['se'] == i:
@@ -274,6 +293,8 @@ def diagonalInside(p1, p2, npath, nctrl, cInfo):
         for x in range(xv[0]+1, xv[1]):
             for attrs in view[y][x]:
                 if attrs['padding']:
+                    if attrs['symbol'] == 'h':
+                        continue
                     return True
                 for dir in find[i][1]:
                     if attrs['dir'] == dir and attrs['se'] == i:
@@ -360,7 +381,7 @@ def lineCorrList(cInfo):
                     if dirAttrs != '61268*':
                         raise 'undefine'
                     
-                    if nextCtrl.pos.y > unit.y*1.5:
+                    if nextCtrl.pos.y > unit.y*2:
                         raise 'undefine'
                     else:
                         corrInfo['ctrl'] = bs.BezierCtrl(pos+nextCtrl.pos/2)
@@ -386,15 +407,15 @@ def lineCorrList(cInfo):
                         corrInfo['ctrl'] = bs.BezierCtrl(pos)
                     elif abs(pos.x) < abs(pos.y):
                         p1 = pos / 2
-                        p1.x *= abs(p1.x / p1.y)
+                        p1.x *= abs(p1.x * 0.5 / p1.y)
                         corrInfo['ctrl'] = bs.BezierCtrl(pos, p1=p1)
                     else:
                         p2 = pos / 2.4
-                        p2.y += (1 - abs(p2.y / p2.x)) * (pos.y - p2.y)
+                        p2.y += (1 - abs(p2.y * 0.5 / p2.x)) * (pos.y - p2.y)
                         corrInfo['ctrl'] =  bs.BezierCtrl(pos, p2=p2)
             elif dir == '3':
                 if nextDir == '2':
-                    if nextCtrl.pos.y > unit.y:
+                    if nextCtrl.pos.y > unit.y*2:
                         corrInfo['ctrl'] = copy.deepcopy(ctrl)
                         corrInfo['ctrl'].pos.y += unit.y
                         corrInfo['ctrl'].p1 = bs.Point(pos.x, (pos.y + unit.y) * 0.3)
@@ -427,29 +448,33 @@ def lineCorrList(cInfo):
                         corrInfo['ctrl'] = bs.BezierCtrl(pos)
                     elif abs(pos.x) < abs(pos.y):
                         p2 = pos / 2
-                        p2.x *= abs(p2.x / p2.y)
+                        p2.x *= abs(p2.x * 0.5 / p2.y)
                         corrInfo['ctrl'] = bs.BezierCtrl(pos, p2=p2)
                     else:
                         p2 = pos / 2
-                        p2.y += pos.y * (1 - abs(p2.y / p2.x)) * 0.5
+                        p2.y += pos.y * (1 - abs(p2.y * 0.5 / p2.x)) * 0.5
                         corrInfo['ctrl'] =  bs.BezierCtrl(pos, p2=p2)
             elif dir == '2':
                 if nextDir == '1' or nextDir == '3':
-                    corrInfo['ctrl'] = copy.deepcopy(ctrl)
-                    if pos.y < unit.y * 1.5:
+                    if pos.y < unit.y * 1.3:
                         corrInfo = 'null'
-                        tempVal = pos.y
+                        corrList[-1][str(index+1)] = {}
+                        corrList[-1][str(index+1)]['ctrl'] = angleInterpolation(bs.Point(), 0.5, bs.Point(0, (pos.y+nextCtrl.pos.y)*0.72), pos+nextCtrl.pos, .8)
+                        corrList[-1][str(index+1)]['corr'] = -pos
                     else:
-                        tempVal = pos.y * 0.5
+                        tempVal = min(pos.y * 0.5, unit.y*2)
+                        corrInfo['ctrl'] = copy.deepcopy(ctrl)
                         corrInfo['ctrl'].pos.y -= tempVal
 
-                    tempCtrl = copy.deepcopy(nextCtrl)
-                    tempCtrl.pos.y += tempVal
-                    tempCtrl = angleInterpolation(bs.Point(), 1, bs.Point(0, tempCtrl.pos.y * 0.5), tempCtrl.pos, 0.5)
-                    corrList[-1][str(index+1)] = {}
-                    corrList[-1][str(index+1)]['ctrl'] = copy.deepcopy(tempCtrl)
-                    corrList[-1][str(index+1)]['corr'] = bs.Point(0, -tempVal)
+                        tempCtrl = copy.deepcopy(nextCtrl)
+                        tempCtrl.pos.y += tempVal
+                        tempCtrl = angleInterpolation(bs.Point(), 1, bs.Point(0, tempCtrl.pos.y * 0.64), tempCtrl.pos, 0.5)
+                        corrList[-1][str(index+1)] = {}
+                        corrList[-1][str(index+1)]['ctrl'] = copy.deepcopy(tempCtrl)
+                        corrList[-1][str(index+1)]['corr'] = bs.Point(0, -tempVal)
                     step += 1
+            elif dir == '9':
+                corrInfo['ctrl'] = bs.BezierCtrl(pos)
             
             corrList[-1][str(index)] = corrInfo
             index += step
@@ -501,9 +526,10 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             tempCtrl = tempCorrInfo['ctrl']
                             tempPos = tempCorrInfo.get('corr', bs.Point()) + cInfo['bpaths'][attrs['indexes'][0]].posIn(attrs['indexes'][1])
                             temp = ctrl.intersections(prePos, tempCtrl, tempPos)
-                            if len(temp[0]):
+                            if len(temp[0]) and ctrl.lengthAt(temp[0][0]) < unit.x:
                                 ctrlCorr['corr'] = ctrl.valueAt(temp[0][0])
-
+                                serif = False
+                        else:
                             serif = False
                     else:
                         raise 'undefine'
@@ -511,9 +537,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 if serif:
                     STROKE = stroke_6(strokeWidth, 'f')
                     expandLen = expInfo.get('extend', 9999)
-                    if expandLen < strokeWidth.x/2:
-                        raise 'undefine'
-                    else:
+                    if expandLen > strokeWidth.x/2:
                         expandLen = strokeWidth.x/2
 
                     pathLen += expandLen
@@ -564,9 +588,14 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             ctrlCorr['pos'] = tempCtrl.valueAt(tempCtrl.roots(y=currPos.y-unit.y/2, pos=tempPos)[0], tempPos)
                             serif.append('cd')
                             continue
+                        elif attrs['dir'] == '3' and attrs['se'] == 0:
+                            if 'v' in serif[0]:
+                                continue
                         elif attrs['dir'] == '1' and attrs['se'] == 1:
                             ctrlCorr['pos'] = currPos
                             serif.append('d')
+                            continue
+                        elif attrs['dir'] == '1' and attrs['se'] == 0:
                             continue
                     elif attrs['symbol'] == 'v':
                         if attrs['padding']:
@@ -574,6 +603,13 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             continue
                         elif attrs['dir'] == '2' and attrs['se'] == 1:
                             serif.append('v')
+                            continue
+                        elif attrs['dir'] == '2' and attrs['se'] == 0:
+                            continue
+                    elif attrs['symbol'] == 'h':
+                        if attrs['padding']:
+                            raise 'undefine'
+                        elif attrs['dir'] == '4' and attrs['se'] == 1:
                             continue
                     raise 'undefine'
 
@@ -594,14 +630,18 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                         comp = bs.controlComp(tempCtrl, comp, prePos, xcenter, fExtend=32)
                         
                         tempCtrl = bs.BezierCtrl(comp.posIn(-1) - comp.startPos())
-                        parallelPath[0][-1] = parallelPath[0][-1].splitting(parallelPath[0][-1].intersections(parallelPath[0].posIn(-1), tempCtrl, comp.startPos())[0][0])[0]
-                        parallelPath[1][-1] = parallelPath[1][-1].splitting(parallelPath[1][-1].intersections(parallelPath[1].posIn(-1), tempCtrl, comp.startPos())[0][0])[0]
+                        tempT = parallelPath[0][-1].intersections(parallelPath[0].posIn(-1), tempCtrl, comp.startPos())[0]
+                        if len(tempT):
+                            parallelPath[0][-1] = parallelPath[0][-1].splitting(tempT[0])[0]
+                            parallelPath[1][-1] = parallelPath[1][-1].splitting(parallelPath[1][-1].intersections(parallelPath[1].posIn(-1), tempCtrl, comp.startPos())[0][0])[0]
 
-                        parallelPath[0].connect(comp.posIn(-1) - parallelPath[0].endPos())
-                        parallelPath[1].connect(comp.startPos() - parallelPath[1].endPos())
-                        parallelPath[1].extend(comp[:-1])
-                        done = True
-                    else:
+                            parallelPath[0].connect(comp.posIn(-1) - parallelPath[0].endPos())
+                            parallelPath[1].connect(comp.startPos() - parallelPath[1].endPos())
+                            parallelPath[1].extend(comp[:-1])
+                            done = True
+                        else:
+                            serif = 'v'
+                    if not done:
                         parallelPath[1].connect(parallelPath[0].endPos() - parallelPath[1].endPos())
                         tempPos = parallelPath[0][-1].valueAt(parallelPath[0][-1].roots(y=prePos.y+strokeWidth.y/2, pos=parallelPath[0].posIn(-1))[0], parallelPath[0].posIn(-1))
                         parallelPath[1].connect(tempPos - parallelPath[1].endPos())
@@ -613,19 +653,25 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 if not done:
                     if serif == 'yes':
                         STROKE = stroke_6(strokeWidth, 'b')
-                        expandLen = expInfo.get('extend', 9999)
-                        if expandLen < STROKE['h'][1]:
-                            raise 'undefine'
-                        else:
+                        expandLen = expInfo.get('extend', 9999)/2
+
+                        if expandLen > STROKE['h'][1]:
                             expandLen = STROKE['h'][1]
+                        pathLen = parallelPath[1][-1].pos.x + expandLen
+                        tempVal = STROKE['h'][0] + STROKE['h'][1]
+                        if pathLen < tempVal:
+                            if pathLen * 2 < tempVal:
+                                raise 'undefine'
                             
-                        areaLen = abs(ctrl.pos.x)
-                        if areaLen < STROKE['h'][0]:
-                            raise 'undefine'
+                            if pathLen * 2/3 < tempVal:
+                                ratio = pathLen * 2/3 / tempVal
+                                STROKE['h'][0] *= ratio
+                                STROKE['h'][1] *= ratio
                         
-                        parallelPath[0][-1].pos.x -=  STROKE['h'][0]
+                        parallelPath[0][-1].pos.x += expandLen
+                        parallelPath[0][-1].pos.x -=  STROKE['h'][0] + STROKE['h'][1]                        
                         parallelPath[0].connect(bs.Point(STROKE['h'][0], -STROKE['v'][0]))
-                        parallelPath[0].connect(bs.Point(expandLen, STROKE['v'][0] + strokeWidth.y - STROKE['v'][1]))
+                        parallelPath[0].connect(bs.Point(STROKE['h'][1], STROKE['v'][0] + strokeWidth.y - STROKE['v'][1]))
                         parallelPath[0].append(ellipticalArc(-STROKE['h'][2], STROKE['v'][1], False))
                         parallelPath[1][-1].pos.x += parallelPath[0].endPos().x - parallelPath[1].endPos().x
                     elif serif == 'v':
@@ -684,20 +730,27 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
 
             if preDir == '*':
                 serif = []
+                request = []
                 expInfo = extendedInfo(bpath.posIn(index-indexCorr), -bpath[index].pos, npath, index, cInfo, strokeWidth)
                 checkSpace = expInfo['front']+expInfo['back']
                 ctrlCorr = {}
                 for i in range(len(checkSpace)):
                     attrs = checkSpace[i]
                     if attrs['symbol'] == 'h':
-                        if attrs['padding']:
+                        if attrs['padding'] or (attrs['dir'] == '6' and attrs['se'] == 1) or (attrs['dir'] == '4' and attrs['se'] == 0):
                             serif.append('h')
                             continue
-                        elif attrs['dir'] == '6' and attrs['se'] == 0:
+                        elif (attrs['dir'] == '6' and attrs['se'] == 0) or (attrs['dir'] == '4' and attrs['se'] == 1):
                             serif.append('s6')
+                            continue
+                        elif 'c1' in serif:
                             continue
                         raise 'undefine'
                     elif attrs['symbol'] == 'v':
+                        if not attrs['padding']:
+                            if attrs['dir'] == '2':
+                                # request.append('h')
+                                continue
                         raise 'undefine'
                     elif attrs['symbol'] == 'd':
                         if attrs['padding']:
@@ -705,12 +758,16 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             tempCorr = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]
                             tempCtrl = tempCorr['ctrl']
                             tempPos = cInfo['bpaths'][attrs['indexes'][0]].posIn(attrs['indexes'][1]) + tempCorr.get('corr', bs.Point())
-                            tempPos = tempCtrl.valueAt(tempCtrl.roots(x=prePos.x-strokeWidth.x/2, pos=tempPos)[0], tempPos)
-                            if tempPos.y > prePos.y:
-                                ctrlCorr['corr'] = bs.Point(0, tempPos.y - prePos.y)
-                                serif.append('d')
+                            temp = tempCtrl.roots(x=prePos.x-strokeWidth.x/2, pos=tempPos)
+                            if len(temp):
+                                temp = tempCtrl.valueAt(temp[0], tempPos)
+                                if temp.y > prePos.y:
+                                    ctrlCorr['corr'] = bs.Point(0, temp.y - prePos.y)
+                                    serif.append('d')
+
+                                    ctrlCorr['tangents'] = tempCtrl.tangents(tempCtrl.roots(x=prePos.x, pos=tempPos)[0], pos=tempPos)
                         elif attrs['dir'] == '1' and attrs['se'] == 0:
-                            if 'h' not in serif[0]:
+                            if 'h' not in serif[0] and 'c1' not in serif[0]:
                                 raise 'undefine'
                         elif attrs['dir'] == '1' and attrs['se'] == 1:
                             if 'h' in serif:
@@ -719,16 +776,15 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             tempCorr = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]
                             tempCtrl = tempCorr['ctrl']
                             tempPos = cInfo['bpaths'][attrs['indexes'][0]].posIn(attrs['indexes'][1]) + tempCorr.get('corr', bs.Point())
-                            if tempCtrl.pos.x + tempPos.x < prePos.x:
+                            if tempCtrl.pos.x + tempPos.x < prePos.x and tempCtrl.pos.y + tempPos.y >= prePos.y - 1:
                                 tempCtrl = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]['ctrl']
                                 tempPos = cInfo['bpaths'][attrs['indexes'][0]].posIn(attrs['indexes'][1])
                                 tempT = tempCtrl.roots(x=prePos.x, pos=tempPos)[0]
                                 ctrlCorr['tangents'] = tempCtrl.tangents(tempT, strokeWidth.x/2, tempPos)
                                 serif.append('c1')
-                                break
-
-                            ctrlCorr['splitCtrl'] = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]['ctrl'].reverse()
-                            serif.append('s1')
+                            else:
+                                ctrlCorr['splitCtrl'] = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]['ctrl'].reverse()
+                                serif.append('s1')
                         elif attrs['dir'] == '3' and attrs['se'] == 0:
                             if 'd' in serif:
                                 tempCorr = corrList[ctrlCorr['dIndexes'][0]][str(ctrlCorr['dIndexes'][1])]
@@ -745,6 +801,10 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     else:
                         raise 'undefine'
                 
+                for r in request:
+                    if r not in serif:
+                        raise 'undefine'
+
                 if len(serif) == 0:
                     serif = 'yes'
                 elif len(serif) == 1:
@@ -752,6 +812,11 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 else:
                     if 'h' in serif:
                         if 's1' in serif: serif.remove('s1')
+                        if 'c1' in serif: serif.remove('h')
+                    elif serif == ['c1', 's6']:
+                        serif.remove('c1')
+                    elif serif == ['s1', 's6']:
+                        serif.remove('s6')
                     
                     if len(serif) == 1:
                         serif = serif[0]
@@ -761,15 +826,15 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 expandLen = expInfo.get('extend', 9999)
                 if serif == 'yes':
                     STROKE = stroke_2(strokeWidth, 'f')
-                    if expandLen < strokeWidth.y/2:
-                        raise 'undefine'
-                    else:
-                        expandLen = strokeWidth.y/2
+                    if expandLen > STROKE['v'][0]:
+                        expandLen = STROKE['v'][0]
 
-                    areaLen = abs(ctrl.pos.y) / 2
+                    areaLen = abs(ctrl.pos.y)
+                    if nectDir == '*':
+                        areaLen /= 2
                     if areaLen+expandLen < sum(STROKE['v']):
                         ratio = (areaLen+expandLen) / sum(STROKE['v'])
-                        if ratio < 0.8:
+                        if ratio < 0.66:
                             raise 'undefine'
                         STROKE['v'] = [v * ratio for v in STROKE['v']]
                     
@@ -784,13 +849,24 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     parallelPath[1].connect(bs.Point(0, pathLen))
                 elif serif == 'd':
                     STROKE = stroke_2(strokeWidth, 'f')
-                    parallelPath[0].start(prePos - bs.Point(strokeWidth.x/2, -ctrlCorr['corr'].y))
-                    tempCtrl = pointAndTangent(bs.Point(0,1), bs.Point(), bs.Point(STROKE['h'][0] + strokeWidth.x, STROKE['v'][0]), bs.Point(strokeWidth.x, sum(STROKE['v'])), .33)
-                    tempCtrl = tempCtrl.splitting(tempCtrl.extermesXY()[0][0])
-                    parallelPath[0].extend(tempCtrl)
-                    parallelPath[0].connect(bs.Point(0, pathLen - sum(STROKE['v']) - ctrlCorr['corr'].y))
-                    parallelPath[1].start(prePos - bs.Point(strokeWidth.x/2, -ctrlCorr['corr'].y))
-                    parallelPath[1].connect(bs.Point(0, pathLen - ctrlCorr['corr'].y))
+                    if (pathLen - ctrlCorr['corr'].y)/(STROKE['v'][0]+STROKE['v'][1]) > 3:
+                        parallelPath[0].start(prePos - bs.Point(strokeWidth.x/2, -ctrlCorr['corr'].y))
+                        tempCtrl = pointAndTangent(bs.Point(0,1), bs.Point(), bs.Point(STROKE['h'][0] + strokeWidth.x, STROKE['v'][0]), bs.Point(strokeWidth.x, sum(STROKE['v'])), .33)
+                        tempCtrl = tempCtrl.splitting(tempCtrl.extermesXY()[0][0])
+                        parallelPath[0].extend(tempCtrl)
+                        parallelPath[0].connect(bs.Point(0, pathLen - sum(STROKE['v']) - ctrlCorr['corr'].y))
+                        parallelPath[1].start(prePos - bs.Point(strokeWidth.x/2, -ctrlCorr['corr'].y))
+                        parallelPath[1].connect(bs.Point(0, pathLen - ctrlCorr['corr'].y))
+                    else:
+                        tempPos = [bs.Point(prePos.x + strokeWidth.x/2, 0), bs.Point(prePos.x - strokeWidth.x/2, 0)]
+                        tempPos.append(bs.intersection(tempPos[0], tempPos[0]+bs.Point(0, 10), ctrlCorr['tangents'][0], ctrlCorr['tangents'][1]))
+                        tempPos.append(bs.intersection(tempPos[1], tempPos[1]+bs.Point(0, 10), ctrlCorr['tangents'][0], ctrlCorr['tangents'][1]))
+                        
+                        parallelPath[0].start(tempPos[3])
+                        parallelPath[0].connect(tempPos[2] - tempPos[3])
+                        parallelPath[0].connect(currPos - tempPos[2] + bs.Point(strokeWidth.x/2, 0))
+                        parallelPath[1].start(tempPos[3])
+                        parallelPath[1].connect(currPos - tempPos[3] - bs.Point(strokeWidth.x/2, 0))
                 elif serif == 'h':
                     parallelPath[0].start(prePos - bs.Point(strokeWidth.x/2, 0))
                     parallelPath[0].connect(bs.Point(strokeWidth.x, 0))
@@ -811,24 +887,21 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     parallelPath[1].connectPath(tempSplit[0].reverse())
                 elif serif == 's6':
                     STROKE = stroke_2(strokeWidth, 's6')
-                    if expandLen < STROKE['v']:
+                    if expandLen < STROKE['v'] / 2:
                         raise 'undefine'
                     else:
                         expandLen = STROKE['v']
                     pathLen += expandLen
 
                     parallelPath[0].start(prePos - bs.Point(strokeWidth.x/2, expandLen))
-                    parallelPath[0].connect(bs.Point(STROKE['h'], STROKE['v']))
+                    parallelPath[0].connect(bs.Point(STROKE['h'], expandLen))
                     parallelPath[0].connect(bs.Point(strokeWidth.x - STROKE['h'], 0))
                     parallelPath[0].connect(bs.Point(0, pathLen - expandLen))
                     parallelPath[1].start(prePos - bs.Point(strokeWidth.x/2, expandLen))
                     parallelPath[1].connect(bs.Point(0, pathLen))
                 elif serif == 's1':
                     STROKE = stroke_2(strokeWidth, 's6')
-                    if expandLen < STROKE['v']:
-                        raise 'undefine'
-                    else:
-                        expandLen = STROKE['v']
+                    expandLen = STROKE['v']
                     pathLen += expandLen
 
                     parallelPath[0].start(prePos - bs.Point(strokeWidth.x/2, expandLen))
@@ -869,6 +942,13 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             if 'd' not in serif:
                                 serif.append('e6')
                             continue
+                        elif attrs['dir'] == '4' and attrs['se'] == 1:
+                            continue
+                    elif attrs['symbol'] == 'v':
+                        if not attrs['padding']:
+                            if attrs['dir'] == '2':
+                                # if 'h' in serif:
+                                    continue
                     elif attrs['symbol'] == 'd':
                         if attrs['padding']:
                             tempCorrInfo = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]
@@ -893,7 +973,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                 continue
                             raise 'undefine'
                         elif attrs['dir'] == '1':
-                            request.append('h')
+                            # request.append('h')
                             continue
                     raise 'undefine'
 
@@ -912,22 +992,26 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 if serif == 'yes':
                     STROKE = stroke_2(strokeWidth, 'b')
                     if expandLen < STROKE['length']:
-                        raise 'undefine'
+                        parallelPath[0][-1].pos.y -= STROKE['length'] - expandLen
                     else:
                         expandLen = STROKE['length']
-                        
+
                     parallelPath[0].append(ellipticalArc(-strokeWidth.x, STROKE['length'], False))
                     parallelPath[1][-1].pos.y += expandLen
                 elif serif == 'e6':
                     STROKE = stroke_2(strokeWidth, 'e6')
-                    if expandLen < sum(STROKE['v']):
-                        raise 'undefine'
-                    else:
+                    if expandLen > sum(STROKE['v'])/2:
+                        if expandLen < sum(STROKE['v']):
+                            STROKE['v'][0] /= 2
+                            STROKE['v'][1] /= 2
                         expandLen = sum(STROKE['v'])
                         
-                    parallelPath[0][-1].pos.y += STROKE['v'][0]
-                    parallelPath[0].append(ellipticalArc(-strokeWidth.x, STROKE['v'][1], False))
-                    parallelPath[1][-1].pos.y += expandLen
+                        parallelPath[0][-1].pos.y += STROKE['v'][0]
+                        parallelPath[0].append(ellipticalArc(-strokeWidth.x, STROKE['v'][1], False))
+                        parallelPath[1][-1].pos.y += expandLen
+                    else:
+                        parallelPath[1][-1].pos.y += expandLen
+                        parallelPath[0].connect(parallelPath[1].endPos() - parallelPath[0].endPos())
                 elif serif == 'h':
                     parallelPath[0].connect(parallelPath[1].endPos() - parallelPath[0].endPos())
                 elif serif == 'd':
@@ -960,19 +1044,28 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
             else:
                 raise 'undefine'
         elif dir == '3':
-            if preDir == '*':
-                if nectDir == '*':
-                    expInfo = [
-                        extendedInfo(bpath.posIn(index-indexCorr), -bpath[index].pos, npath, index-indexCorr, cInfo, strokeWidth),
-                        extendedInfo(bpath.posIn(nectIndex), bpath[index].pos, npath, nectIndex-1, cInfo, strokeWidth)
-                    ]
-                    serif = [[],[]]
-                    ctrlCorr = {}
+            expInfo = [
+                extendedInfo(bpath.posIn(index-indexCorr), -bpath[index].pos, npath, index-indexCorr, cInfo, strokeWidth),
+                extendedInfo(bpath.posIn(nectIndex), bpath[index].pos, npath, nectIndex-1, cInfo, strokeWidth)
+            ]
+            serif = [[],[]]
+            ctrlCorr = {}
+            ctrlCorr2 = {}
+            
+            def check(f, b):
+                if f:
+                    request = []
                     for attrs in expInfo[0]['front']+expInfo[0]['back']:
                         # if attrs['indexes'] == [npath, index-indexCorr]: continue
                         if attrs['symbol'] == 'h':
                             if attrs['padding']:
                                 serif[0].append('h')
+                                continue
+                            elif attrs['dir'] == '6' and attrs['se'] == 0:
+                                if 'd' in serif[0]:
+                                    continue
+                            elif attrs['dir'] == '6' and attrs['se'] == 1:
+                                request.append('v')
                                 continue
                         elif attrs['symbol'] == 'v':
                             if attrs['padding']:
@@ -1033,24 +1126,14 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                     continue
                                 else:
                                     continue
-                        raise 'undefine'
-                    for attrs in expInfo[1]['front']+expInfo[1]['back']:
-                        if attrs['symbol'] == 'h':
-                            if attrs['padding']:
-                                serif[1].append('h')
+                            elif attrs['dir'] == '1' and attrs['se'] == 1:
                                 continue
-                            elif attrs['dir'] == '6' and attrs['se'] == 1:
-                                continue
-                        elif attrs['symbol'] == 'v':
-                            raise 'undefine'
-                        elif attrs['symbol'] == 'd':
-                            if attrs['padding']:
-                                continue
-                            elif attrs['dir'] == '1' and attrs['se'] == 0:
-                                if 'h' in serif[1]:
-                                    continue
                         raise 'undefine'
                     
+                    for r in request:
+                        if r not in serif[0]:
+                            raise 'undefine'
+
                     if len(serif[0]) == 0:
                         serif[0] = 'yes'
                     elif len(serif[0]) > 1:
@@ -1060,15 +1143,55 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             raise 'undefine'
                     else:
                         serif[0] = serif[0][0]
+
+                if b:
+                    request = []
+                    for attrs in expInfo[1]['front']+expInfo[1]['back']:
+                        if attrs['symbol'] == 'h':
+                            if attrs['padding']:
+                                serif[1].append('h')
+                                continue
+                            elif attrs['dir'] == '6' and attrs['se'] == 1:
+                                serif[1].append('e6')
+                                continue
+                        elif attrs['symbol'] == 'v':
+                            raise 'undefine'
+                        elif attrs['symbol'] == 'd':
+                            if attrs['padding']:
+                                tempCorrInfo = corrList[attrs['indexes'][0]][str(attrs['indexes'][1])]
+                                tempCtrl = tempCorrInfo['ctrl']
+                                tempPos = tempCorrInfo.get('corr', bs.Point()) + cInfo['bpaths'][attrs['indexes'][0]].posIn(attrs['indexes'][1])
+
+                                tempT = ctrl.intersections(prePos, tempCtrl, tempPos)
+                                if len(tempT[0]) and ctrl.reverse().lengthAt(1-tempT[0][0]) < max(unit.x, unit.y):
+                                    ctrlCorr2['tangents'] = tempCtrl.tangents(tempT[1][0], 10, tempPos)
+                                    serif[1].append('d')
+                                continue
+                            elif attrs['dir'] == '1' and attrs['se'] == 1:
+                                continue
+                            elif attrs['dir'] == '9' and attrs['se'] == 0:
+                                continue
+                            elif attrs['dir'] == '1' and attrs['se'] == 0:
+                                # if 'h' in serif[1]:
+                                    continue
+                        raise 'undefine'
+                    
+                    for r in request:
+                        if r not in serif[1]:
+                            raise 'undefine'
+
                     if len(serif[1]) == 0:
                         serif[1] = 'yes'
                     elif len(serif[1]) > 1:
                         raise 'undefine'
                     else:
                         serif[1] = serif[1][0]
-                    
-                    if ctrl.pos.x < unit.x * 1.5 and (indexCorr == 0 or dirAttrs[index-indexCorr] != '2'):
-                        if (serif[0] == 'yes' or serif[0] == 'vd') and serif[1] == 'yes':
+
+            if preDir == '*':
+                if nectDir == '*':
+                    check(True, True)
+                    if ctrl.pos.x < unit.x * 1.6 and (indexCorr == 0 or dirAttrs[index-indexCorr] != '2'):
+                        if (serif[0] == 'yes' or serif[0] == 'vd' or serif[0] == 'hv') and (serif[1] == 'yes' or serif[1] == 'd'):
                             comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
                         elif serif[0] == 'h' and serif[1] == 'yes':
                             if ctrl.pos.y > DOT_MIN_HEIGHT:
@@ -1079,6 +1202,12 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                 comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
                                 comp = comp.splitting(prePos, prePos+bs.Point(99, 0))[1][0]
                                 comp.close()
+                        elif serif[0] == 'd' and serif[1] == 'yes':
+                            ctrl.scale(ctrlCorr['scale'])
+                            prePos += ctrlCorr['startCorr']
+                            comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
+                            comp = comp.splitting(prePos+ctrlCorr['splitLine'], prePos)[1][0]
+                            comp.close()
                         elif serif[0] == 's' and serif[1] == 'yes':
                             comp, xcenter = comp_dot(ctrlCorr['ctrl'], prePos+ctrlCorr['pos'], strokeWidth, '3')
                         elif serif[0] == 'yes' and serif[1] == 'h':
@@ -1088,13 +1217,28 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                 comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
                             else:
                                 comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
+                                temp = comp.splitting(bs.Point(0, currPos.y), bs.Point(10, currPos.y), connect=False)[0]
+                                if len(temp) > 2: raise 'undefine'
+
+                                comp = temp[0]
+                                if len(temp) == 2:
+                                    comp.connect(temp[1].startPos() - comp.endPos())
+                                    comp.connectPath(temp[1])
+
+                                comp.close()
+                        elif serif[0] == 'yes' and serif[1] == 'e6':
+                            comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3', bExtend=strokeWidth.x)
                         elif serif[0] == 'h' and serif[1] == 'h':
                             if ctrl.pos.y > DOT_MIN_HEIGHT:
                                 tempCorr = min(ctrl.pos.y - DOT_MIN_HEIGHT, DOT_IDENT*2)
                                 ctrl.scale(bs.Point(1, (ctrl.pos.y-tempCorr)/ctrl.pos.y))
                                 comp, xcenter = comp_dot(ctrl, prePos+bs.Point(0, tempCorr/2), strokeWidth, '3')
                             else:
-                                raise 'undefine'
+                                comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3', fExtend=strokeWidth.x/2, bExtend=strokeWidth.x/2)
+                                comp = comp.splitting(prePos, prePos+bs.Point(99, 0))[1][0]
+                                comp.close()
+                                comp = comp.splitting(currPos, currPos+bs.Point(99, 0))[0][0]
+                                comp.close()
                         else:
                             raise 'undefine'
                     else:
@@ -1102,11 +1246,30 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
                             comp = bs.controlComp(ctrl, comp, prePos, xcenter, bExtend=16)
                         elif serif[0] == 'yes' and serif[1] == 'h':
+                            if ctrl.pos.y > DOT_MIN_HEIGHT:
+                                tempCorr = min(ctrl.pos.y - DOT_MIN_HEIGHT, DOT_IDENT)
+                                ctrl.scale(bs.Point(1, (ctrl.pos.y-tempCorr)/ctrl.pos.y))
+                                comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
+                            else:
+                                comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
+                                temp = comp.splitting(bs.Point(0, currPos.y), bs.Point(10, currPos.y), connect=False)[0]
+                                if len(temp) != 2: raise 'undefine'
+
+                                comp = temp[0]
+                                comp.connect(temp[1].startPos() - comp.endPos())
+                                comp.connectPath(temp[1])
+                                comp.close()
+                        elif serif[0] == 'yes' and serif[1] == 'e6':
                             comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
-                            comp = bs.controlComp(ctrl, comp, prePos, xcenter)
+                            comp = bs.controlComp(ctrl, comp, prePos, xcenter, bExtend=strokeWidth.x)
+                        elif serif[0] == 'yes' and serif[1] == 'd':
+                            comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
+                            comp = bs.controlComp(ctrl, comp, prePos, xcenter, bExtend=strokeWidth.x)
+                            comp = comp.splitting(ctrlCorr2['tangents'][0], ctrlCorr2['tangents'][1])[0][0]
+                            comp.close()
                         elif serif[0] == 's' and serif[1] == 'yes':
                             comp, xcenter = comp_3(strokeWidth, ctrlCorr['ctrl'].lengthAt(1), 'all')
-                            comp = bs.controlComp(tempSplit[1], comp, prePos+ctrlCorr['pos'], xcenter)
+                            comp = bs.controlComp(ctrlCorr['ctrl'], comp, prePos+ctrlCorr['pos'], xcenter)
                         elif serif[0] == 's3' and serif[1] == 'yes':
                             comp, xcenter = comp_3(strokeWidth, ctrlCorr['ctrl'].pos.distance(), 'all')
                             comp = bs.controlComp(ctrlCorr['ctrl'], comp, prePos+ctrlCorr['pos'], xcenter)
@@ -1126,11 +1289,13 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             else:
                                 comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
                         elif serif[0] == 'hv' and serif[1] == 'yes':
-                            if ctrl.pos.x > unit.x*2:
+                            if ctrl.pos.y > unit.y*2 and ctrl.pos.x < unit.x*2.5:
+                                tempCorr = max(ctrl.pos.y / 2, min(DOT_IDENT, ctrl.pos.y))
+                                ctrl.scale(bs.Point(1, (ctrl.pos.y-tempCorr)/ctrl.pos.y))
+                                comp, xcenter = comp_dot(ctrl, prePos + bs.Point(0, tempCorr*0.66), strokeWidth, '3')
+                            else:
                                 comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
                                 comp = bs.controlComp(ctrl, comp, prePos, xcenter)
-                            else:
-                                comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '3')
                         else:
                             raise 'undefine'
 
@@ -1153,13 +1318,25 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     parallelPath[0].extend(comp)
                     parallelPath[0].connectPath(parallelPath[1].reverse())
                 elif preDir == '1':
-                    comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
-                    comp = bs.controlComp(ctrl, comp, prePos, xcenter)
+                    check(False, True)
 
-                    parallelPath[1].connect(parallelPath[0].endPos() - parallelPath[1].endPos())
+                    comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
+                    comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2, bExtend=strokeWidth.x/2)
+                    if serif[1] == 'd':
+                        tempSplit = comp.splitting(ctrlCorr2['tangents'][0], ctrlCorr2['tangents'][1], connect=False)[0]
+                        comp = tempSplit[0]
+                        comp.connect(tempSplit[1].startPos() - comp.endPos())
+                        comp.connectPath(tempSplit[1])
+
                     tempSplit = comp[-1].intersections(comp.posIn(-1), parallelPath[0][-1], parallelPath[0].posIn(-1))
-                    parallelPath[1].append(parallelPath[0][-1].splitting(tempSplit[1][0])[1].reverse())
-                    parallelPath[1].append(comp[-1].splitting(tempSplit[0][0])[0].reverse())
+                    if len(tempSplit[0]) and len(tempSplit[1]):
+                        parallelPath[1].connect(parallelPath[0].endPos() - parallelPath[1].endPos())
+                        parallelPath[1].append(parallelPath[0][-1].splitting(tempSplit[1][0])[1].reverse())
+                        parallelPath[1].append(comp[-1].splitting(tempSplit[0][0])[0].reverse())
+                    else:
+                        tempSplit = comp[-1].splitting(comp[-1].roots(y=parallelPath[1].endPos().y, pos=comp.posIn(-1))[0])
+                        parallelPath[1].connect(comp.posIn(-1) + tempSplit[0].pos - parallelPath[1].endPos())
+                        parallelPath[1].append(tempSplit[0].reverse())
 
                     tempSplit = comp[1].intersections(comp.posIn(1), parallelPath[0][-1], parallelPath[0].posIn(-1))
                     parallelPath[0][-1] = parallelPath[0][-1].splitting(tempSplit[1][0])[0]
@@ -1172,7 +1349,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                         raise 'undefine'
                 
                     comp, xcenter = comp_3(strokeWidth, ctrl.pos.distance(), 'all')
-                    comp = bs.controlComp(ctrl, comp, prePos, xcenter)
+                    comp = bs.controlComp(ctrl, comp, prePos, xcenter, bExtend=strokeWidth.x/2)
 
                     tempCtrl = parallelPath[0][-1]
                     tempSplit = comp[1].splitting(comp[1].roots(x=strokeWidth.x/2)[0])
@@ -1200,25 +1377,33 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     comp = bs.controlComp(tempCtrl, comp, prePos, xcenter)
                     parallelPath[0].append(comp[0])
                     parallelPath[1].extend(comp.reverse()[:-1])
-                elif preDir == '1' and nectDir == '4':
+                elif preDir == '1' and (nectDir == '4' or nectDir == '2'):
                     comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
                     comp.close()
                     comp = comp.mirror(bs.Point(), bs.Point(10, 0)).reverse()
-                    temp = bs.controlComp(ctrl, comp, prePos, xcenter, group=True)
-                    comp = temp[2]
-                    comp.connectPath(temp[3])
-                    comp.connectPath(temp[0])
-                    comp.connectPath(temp[1])
-                    comp.close()
-
+                    
+                    comp = bs.controlComp(ctrl, comp, prePos, xcenter, group=True)
+                    comp = [comp[2], comp[3], comp[0], comp[1]]
                     parallelPath[1].connect(parallelPath[0].endPos() - parallelPath[1].endPos())
-                    tempSplit = comp[-1].intersections(comp.posIn(-1), parallelPath[0][-1], parallelPath[0].posIn(-1))
-                    parallelPath[1].append(parallelPath[0][-1].splitting(tempSplit[1][0])[1].reverse())
-                    parallelPath[1].append(comp[-1].splitting(tempSplit[0][0])[0].reverse())
 
-                    tempSplit = comp[1].intersections(comp.posIn(1), parallelPath[0][-1], parallelPath[0].posIn(-1))
+                    index = -1
+                    for i in range(len(comp[-1])):
+                        tempCtrl = comp[-1][index].reverse()
+                        tempSplit = tempCtrl.intersections(comp[-1].endPos(), parallelPath[0][-1], parallelPath[0].posIn(-1))
+                        if len(tempSplit[0]):
+                            break
+                        else:
+                            index -= 1
+
+                    parallelPath[1].append(parallelPath[0][-1].splitting(tempSplit[1][0])[1].reverse())
+                    parallelPath[1].append(tempCtrl.splitting(tempSplit[0][0])[1])
+                    parallelPath[1].extend(comp[-1].reverse()[-index:])
+
+                    tempCtrl = comp[1][0]
+                    tempSplit = tempCtrl.intersections(comp[1].startPos(), parallelPath[0][-1], parallelPath[0].posIn(-1))
                     parallelPath[0][-1] = parallelPath[0][-1].splitting(tempSplit[1][0])[0]
-                    parallelPath[0].append(comp[1].splitting(tempSplit[0][0])[1])
+                    parallelPath[0].append(tempCtrl.splitting(tempSplit[0][0])[1])
+                    parallelPath[1].extend(comp[1][1:])
                 else:
                     raise 'undefine'
         elif dir == '1':
@@ -1230,11 +1415,12 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
             ctrlCorr = {}
 
             def check(f, b):
+                request = []
                 if f:
                     for attrs in expInfo[0]['front']+expInfo[0]['back']:
                         # if attrs['indexes'] == [npath, index-indexCorr]: continue
                         if attrs['symbol'] == 'h':
-                            if attrs['padding']:
+                            if attrs['padding'] or (attrs['dir'] == '6' and attrs['se'] == 1):
                                 serif[0].append('h')
                                 continue
                             elif attrs['dir'] == '6' and attrs['se'] == 0:
@@ -1286,12 +1472,18 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                         ctrlCorr['tangents'] = tempCtrl.tangent(tempT[1][0], 10)
                                         serif[0].append('cd')
                                         continue
-                                raise 'undefine'
+                                else:
+                                    request.append('h')
+                                    continue
                             elif attrs['dir'] == '1' and attrs['se'] == 1:
                                 if 'v' in serif[0]:
                                     continue
                         raise 'undefine'
                     
+                    for r in request:
+                        if r not in serif[0]:
+                            raise 'undefine'
+
                     if len(serif[0]) == 0:
                         serif[0] = 'yes'
                     elif len(serif[0]) > 1:
@@ -1302,6 +1494,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     else:
                         serif[0] = serif[0][0]
 
+                request = []
                 if b:
                     for attrs in expInfo[1]['front']+expInfo[1]['back']:
                         if attrs['symbol'] == 'v':
@@ -1309,6 +1502,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                 serif[1].append('v')
                                 continue
                             elif attrs['dir'] == '2' and attrs['se'] == 0:
+                                serif[1].append('e2')
                                 continue
                         elif attrs['symbol'] == 'h':
                             if attrs['padding']:
@@ -1316,6 +1510,8 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                 continue
                             elif attrs['dir'] == '6' and attrs['se'] == 1:
                                 serif[1].append('e6')
+                                continue
+                            elif attrs['dir'] == '6' and attrs['se'] == 0:
                                 continue
                         elif attrs['symbol'] == 'd':
                             if attrs['padding']:
@@ -1338,9 +1534,18 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     if len(serif[1]) == 0:
                         serif[1] = 'yes'
                     elif len(serif[1]) > 1:
-                        raise 'undefine'
+                        if 'e2' in serif[1]:
+                            serif[1].remove('e2')
+                            if len(serif[1]) == 1 : serif[1] = serif[1][0]
+
+                        if len(serif[1]) > 1:
+                            raise 'undefine'
                     else:
                         serif[1] = serif[1][0]
+
+                    for r in request:
+                        if r not in serif[1]:
+                            raise 'undefine'
                     
             if preDir == '*':
                 if nectDir == '*':
@@ -1348,7 +1553,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     if abs(ctrl.pos.x) < unit.x * 1.5 and (indexCorr == 0 or dirAttrs[index-indexCorr] != '2') and serif[0] != 'd':
                         if (serif[0] == 'yes' or serif[0] == 'h' or serif[0] == 'v') and serif[1] == 'yes':
                             comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '1')
-                        elif serif[0] == 'yes' and (serif[1] == 'yes' or serif[1] == 'v'):
+                        elif serif[0] == 'yes' and (serif[1] == 'yes' or serif[1] == 'v' or serif[1] == 'de'):
                             comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '1')
                         elif serif[0] == 'yes' and serif[1] == 'h':
                             if ctrl.pos.y > DOT_MIN_HEIGHT:
@@ -1356,7 +1561,19 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                                 ctrl.scale(bs.Point(1, (ctrl.pos.y-tempCorr)/ctrl.pos.y))
                                 comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '1')
                             else:
-                                raise 'undefine'
+                                comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '1')
+                                temp = comp.splitting(bs.Point(0, currPos.y), bs.Point(10, currPos.y), connect=False)[0]
+                                if len(temp) > 2: raise 'undefine'
+
+                                comp = temp[0]
+                                if len(temp) == 2:
+                                    comp.connect(temp[1].startPos() - comp.endPos())
+                                    comp.connectPath(temp[1])
+
+                                comp.close()
+                        elif serif[0] == 'yes' and serif[1] == 'e2':
+                            comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'all')
+                            comp = bs.controlComp(ctrl, comp, prePos, xcenter)
                         elif serif[0] == 'h' and serif[1] == 'h':
                             tempSplit = diagonalSplitInfo(bpath.posIn(index-indexCorr), bpath.posIn(nectIndex), npath, index, cInfo)
                             if len(tempSplit[1]) == 2:
@@ -1378,11 +1595,30 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                         else:
                             raise 'undefine'
                     else:
+                        if serif[1] == 'e2': serif[1] = 'yes'
+
                         if serif[0] == 'v' and serif[1] == 'v':
                             raise 'undefine'
-                        elif serif[0] == 'yes' and (serif[1] == 'yes' or serif[1] == 'v' or serif[1] == 'h'):
+                        elif serif[0] == 'yes' and (serif[1] == 'yes' or serif[1] == 'v' or serif[1] == 'e6'):
                             comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'all')
                             comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=ctrlCorr.get('fExtend', 0))
+                        elif serif[0] == 'yes' and serif[1] == 'h':
+                            if ctrl.pos.y > DOT_MIN_HEIGHT:
+                                tempCorr = min(ctrl.pos.y - DOT_MIN_HEIGHT, DOT_IDENT)
+                                ctrl.scale(bs.Point(1, (ctrl.pos.y-tempCorr)/ctrl.pos.y))
+                                comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'all')
+                                comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=ctrlCorr.get('fExtend', 0))
+                            else:
+                                comp, xcenter = comp_dot(ctrl, prePos, strokeWidth, '1')
+                                temp = comp.splitting(bs.Point(0, currPos.y), bs.Point(10, currPos.y), connect=False)[0]
+                                if len(temp) > 2: raise 'undefine'
+
+                                comp = temp[0]
+                                if len(temp) == 2:
+                                    comp.connect(temp[1].startPos() - comp.endPos())
+                                    comp.connectPath(temp[1])
+
+                                comp.close()
                         elif serif[0] == 'yes' and serif[1] == 'de':
                             tempCtrl = ctrl.splitting(ctrlCorr['t'])[0]
                             comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'all')
@@ -1401,9 +1637,22 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                             comp.close()
                             comp = comp.splitting(prePos, prePos+ctrlCorr['splitLine'])[1][0]
                             comp.close()
-                        elif (serif[0] == 'v' or serif[0] == 'h' or serif[0] == 'hv') and serif[1] == 'yes':
+                        elif serif[0] == 'h' and serif[1] == 'yes':
                             comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
-                            comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=32)
+                            comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2)
+                            comp.close()
+                            if 'v' in serif[0]:
+                                comp = comp.splitting(prePos, prePos+bs.Point(0, 10))[1][0]
+                                comp.close()
+                            if 'h' in serif[0]:
+                                comp = comp.splitting(prePos, prePos+bs.Point(10, 0))[1][0]
+                                comp.close()
+                        elif (serif[0] == 'v' or serif[0] == 'hv') and serif[1] == 'yes':
+                            comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
+                            if abs(ctrl.pos.x) < strokeWidth.x*3 and abs(ctrl.pos.x / ctrl.pos.y) < 0.5:
+                                comp = bs.controlComp(bs.BezierCtrl(ctrl.pos), comp, prePos, xcenter, fExtend=strokeWidth.x/2)
+                            else:
+                                comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2)
                             comp.close()
                             if 'v' in serif[0]:
                                 comp = comp.splitting(prePos, prePos+bs.Point(0, 10))[1][0]
@@ -1425,16 +1674,16 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                         tempCtrl = copy.deepcopy(ctrl)
                         tempPos = bs.Point()
                         if serif[0] == 'h':
-                            if ctrl.pos.y < strokeWidth.x*2: raise 'undefine'
+                            if ctrl.pos.y < strokeWidth.x*1.5: raise 'undefine'
                             tempCtrl.scale(bs.Point(1, (tempCtrl.pos.y-strokeWidth.x/2)/tempCtrl.pos.y))
                             tempPos = bs.Point(0, strokeWidth.x/2)
 
                         if isSplit:
                             comp, xcenter = comp_1(strokeWidth, tempCtrl.pos.distance(), 'allTo')
-                            comp = bs.controlComp(tempCtrl, comp, prePos+tempPos, xcenter, group=True, bExtend=strokeWidth.x)
+                            comp = bs.controlComp(tempCtrl, comp, prePos+tempPos, xcenter, group=True, bExtend=strokeWidth.x*0.72)
                         else:
                             comp, xcenter = comp_1(strokeWidth, tempCtrl.pos.distance(), 'all')
-                            comp = bs.controlComp(tempCtrl, comp, prePos+tempPos, xcenter, group=True, bExtend=strokeWidth.x)
+                            comp = bs.controlComp(tempCtrl, comp, prePos+tempPos, xcenter, group=True, bExtend=strokeWidth.x*0.72)
 
                         parallelPath[0].start(comp[0].startPos())
                         parallelPath[0].extend(comp[0])
@@ -1458,6 +1707,7 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                         raise 'undefine'
                 elif nectDir == '9':
                     check(True, False)
+
                     if serif[0] == 'h':
                         comp, xcenter = comp_rect(strokeWidth.x)
                         comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x, bExtend=strokeWidth.x)
@@ -1474,16 +1724,63 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
             elif nectDir == '*':
                 if preDir == '6':
                     check(False, True)
+                    if serif[1] == 'e2': serif[1] = 'yes'
+
                     if serif[1] == 'yes' or serif[1] == 'h':
                         comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
-                        comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2)
+                        comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2, group=True)
 
-                        tempSplit = comp[0].splitting(comp[0].roots(y=parallelPath[0].endPos().y, pos=comp.startPos())[0])
-                        parallelPath[0].append(tempSplit[1])
-                        parallelPath[0].extend(comp[1:])
+                        tempPos = [
+                            parallelPath[0].posIn(-1),
+                            comp[0].posIn(0),
+                        ]
+                        tempVal = tempPos[0].y+parallelPath[0][-1].pos.y
+                        if tempPos[1].y > tempVal:
+                            tempPos.append(comp[0].startPos())
+                            parallelPath[0][-1] = ellipticalArc(tempPos[2].x-tempPos[0].x, tempPos[2].y-tempPos[0].y, False)
+                            parallelPath[0].extend(comp[0])
+                            parallelPath[0].extend(comp[1])
+                        else:
+                            tempSplit = comp[0].splitting(bs.Point(0, tempVal), bs.Point(10, tempVal))[1][0]
+                            tempPos.append(tempSplit.startPos())
+                            parallelPath[0][-1] = ellipticalArc(tempPos[2].x-tempPos[0].x, tempPos[2].y-tempPos[0].y, False)
+                            parallelPath[0].extend(tempSplit)
+                            parallelPath[0].extend(comp[1])
 
-                        parallelPath[0][-1] = parallelPath[0][-1].splitting(parallelPath[0][-1].roots(y=parallelPath[1].endPos().y, pos=parallelPath[0].posIn(-1))[0])[0]
-                        parallelPath[1][-1].pos.x += parallelPath[0].endPos().x - parallelPath[1].endPos().x
+                        tempVal = parallelPath[1].endPos().y
+                        tempSplit = comp[-1].splitting(bs.Point(0, tempVal), bs.Point(10, tempVal))[1][0]
+                        parallelPath[1][-1].pos.x += tempSplit.endPos().x - parallelPath[1].endPos().x
+                        parallelPath[1].extend(tempSplit.reverse())
+
+                        if serif[1] == 'h':
+                            temp = parallelPath[0].splitting(bs.Point(0, currPos.y), bs.Point(10, currPos.y))[0]
+                            if len(temp) != 1: raise 'undefine'
+                            parallelPath[0] = temp[0]
+                            temp = parallelPath[1].splitting(bs.Point(0, currPos.y), bs.Point(10, currPos.y))[0]
+                            if len(temp) != 1: raise 'undefine'
+                            parallelPath[1] = temp[0]
+
+                            parallelPath[0].connect(parallelPath[1].endPos() - parallelPath[0].endPos())
+                    elif serif[1] == 'de':
+                        tempCtrl = ctrl.splitting(ctrlCorr['t'])[0]
+                        comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
+                        comp = bs.controlComp(tempCtrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2, group=True)
+                        
+                        tempPos = [
+                            parallelPath[0].posIn(-1),
+                            comp[0].posIn(0),
+                        ]
+                        tempVal = tempPos[0].y+parallelPath[0][-1].pos.y
+                        tempSplit = comp[0].splitting(bs.Point(0, tempVal), bs.Point(10, tempVal))[1][0]
+                        tempPos.append(tempSplit.startPos())
+                        parallelPath[0][-1] = ellipticalArc(tempPos[2].x-tempPos[0].x, tempPos[2].y-tempPos[0].y, False)
+                        parallelPath[0].extend(tempSplit)
+                        parallelPath[0].extend(comp[1])
+
+                        tempVal = parallelPath[1].endPos().y
+                        tempSplit = comp[-1].splitting(bs.Point(0, tempVal), bs.Point(10, tempVal))[1][0]
+                        parallelPath[1][-1].pos.x += tempSplit.endPos().x - parallelPath[1].endPos().x
+                        parallelPath[1].extend(tempSplit.reverse())
                     elif serif[1] == 'e6':
                         comp, xcenter = comp_rect(strokeWidth.x)
                         comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2, bExtend=strokeWidth.x/2)
@@ -1505,9 +1802,19 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     
                     parallelPath[0].connectPath(parallelPath[1].reverse())
                 elif preDir == '2':
+                    check(False, True)
+                    if serif[1] == 'e2': serif[1] = 'yes'
+
                     comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
                     comp = bs.controlComp(ctrl, comp, prePos, xcenter, bExtend=32)
-                    parallelPath[0].extend(comp)
+                    if serif[1] == 'h':
+                        comp = comp.splitting(currPos, currPos+bs.Point(10, 0), connect=False)[0]
+                        parallelPath[0].connectPath(comp[0])
+                        parallelPath[1].connectPath(comp[-1].reverse())
+                        parallelPath[0].connect(parallelPath[1].endPos() -parallelPath[0].endPos())
+                    else:
+                        parallelPath[0].extend(comp)
+
                     parallelPath[0].connectPath(parallelPath[1].reverse())
                 else:
                     raise 'undefine'
@@ -1520,11 +1827,20 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     comp, xcenter = comp_rect(strokeWidth.x)
                     comp = bs.controlComp(tempCtrl, comp, prePos, xcenter, fExtend=32)
 
-                    tempSplit = comp[1].splitting(comp[1].roots(y=parallelPath[0].endPos().y, pos=comp.posIn(1))[0])
-                    tempPos = [parallelPath[0].posIn(-1), comp.posIn(1)+tempSplit[0].pos]
-                    parallelPath[0][-1] = ellipticalArc(tempPos[1].x - tempPos[0].x, tempPos[1].y - tempPos[0].y, False)
-                    parallelPath[0].append(tempSplit[1])
-                    
+                    tempPos = [
+                        parallelPath[0].posIn(-1),
+                        comp.posIn(1),
+                    ]
+                    tempVal = tempPos[0].y+parallelPath[0][-1].pos.y
+                    if tempPos[1].y > tempVal:
+                        parallelPath[0][-1] = ellipticalArc(tempPos[1].x-tempPos[0].x, tempPos[1].y-tempPos[0].y, False)
+                        parallelPath[0].append(comp[1])
+                    else:
+                        tempSplit = comp[1].splitting(comp[1].roots(y=parallelPath[0].endPos().y, pos=comp.posIn(1))[0])
+                        tempPos = [parallelPath[0].posIn(-1), comp.posIn(1)+tempSplit[0].pos]
+                        parallelPath[0][-1] = ellipticalArc(tempPos[1].x - tempPos[0].x, tempPos[1].y - tempPos[0].y, False)
+                        parallelPath[0].append(tempSplit[1])
+
                     tempSplit = comp[-1].splitting(comp[-1].roots(y=parallelPath[1].endPos().y, pos=comp.posIn(-1))[0])
                     parallelPath[1][-1].pos.x += comp.startPos().x - tempSplit[1].pos.x - parallelPath[1].endPos().x
                     parallelPath[1].append(tempSplit[0].reverse())
@@ -1532,16 +1848,18 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     raise 'undefine'
             elif preDir == '6' and (nectDir == '6' or nectDir == '3'):
                 comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'to')
-                comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2, bExtend=strokeWidth.x/2)
+                comp = bs.controlComp(ctrl, comp, prePos, xcenter, fExtend=strokeWidth.x/2, bExtend=strokeWidth.x*0.66, group=True)
 
-                tempSplit = comp[0].splitting(comp[0].roots(y=parallelPath[0].endPos().y, pos=comp.startPos())[0])
-                tempPos = [parallelPath[0].posIn(-1), comp.posIn(0)+tempSplit[0].pos]
+                tempVal = parallelPath[0].endPos().y
+                tempSplit = comp[0].splitting(bs.Point(0, tempVal), bs.Point(10, tempVal))[1][0]
+                tempPos = [parallelPath[0].posIn(-1), tempSplit.startPos()]
                 parallelPath[0][-1] = ellipticalArc(tempPos[1].x - tempPos[0].x, tempPos[1].y - tempPos[0].y, False)
-                parallelPath[0].append(tempSplit[1])
+                parallelPath[0].extend(tempSplit)
 
-                tempSplit = comp[-1].splitting(comp[-1].roots(y=parallelPath[1].endPos().y, pos=comp.posIn(-1))[0])
-                parallelPath[1][-1].pos.x += comp.endPos().x - tempSplit[1].pos.x  - parallelPath[1].endPos().x
-                parallelPath[1].append(tempSplit[0].reverse())
+                tempVal = parallelPath[1].endPos().y
+                tempSplit = comp[-1].splitting(bs.Point(0, tempVal), bs.Point(10, tempVal))[1][0]
+                parallelPath[1][-1].pos.x += tempSplit.endPos().x  - parallelPath[1].endPos().x
+                parallelPath[1].extend(tempSplit.reverse())
             else:
                 raise 'undefine'
         elif dir == '9':
@@ -1551,13 +1869,13 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 for attrs in expInfo['front']+expInfo['back']:
                     temp = False
 
-                if abs(ctrl.pos.y) < unit.y * 1.5 and temp:
+                if abs(ctrl.pos.y) < unit.y * 1.5 and abs(ctrl.pos.x) > unit.x * 3.5 and temp:
                     comp = comp_6(strokeWidth, ctrl, prePos)
                 else:
                     comp, xcenter = comp_1(strokeWidth, ctrl.pos.distance(), 'all')
                     comp = comp.mirror(bs.Point(), bs.Point(0, 10))
                     xcenter = 1 - xcenter
-                    comp = bs.controlComp(ctrl, comp, prePos, xcenter)
+                    comp = bs.controlComp(ctrl, comp, prePos, xcenter, bExtend=strokeWidth.x/2)
 
                 pathList.append(comp)
             elif preDir == '*' and nectDir == '2':
@@ -1636,17 +1954,14 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 tempPos = [parallelPath[1].endPos(), parallelPath[0].endPos()]
                 tempPos.append(bs.intersection(tempPos[0], tempPos[0]+tempTangen, tempPos[1], tempPos[1]+ctrl.pos))
                 parallelPath[1].connect(tempPos[2] - tempPos[0])
-                parallelPath[1].append(threePointCtrl(tempPos[2], prePos, tempPos[1]))
+                
+                # tempTangen = tempTangen * STROKE['v'][2] + (tempPos[1] - tempPos[2]).normalization() * STROKE['h'][1]
+                # parallelPath[1].append(threePointCtrl(tempPos[2], tempPos[2] + tempTangen, tempPos[1]))
+                parallelPath[1].append(threePointCtrl(tempPos[2], sinInterpolation(0.5, 0.24, tempPos[2], currPos, tempPos[1]), tempPos[1]))
                 
                 parallelPath[0].connectPath(parallelPath[1].reverse())
                 parallelPath[0].close()
                 pathList.append(parallelPath[0])
-                        
-                # parallelPath[0].connect(parallelPath[1].endPos()-parallelPath[0].endPos())
-                # parallelPath[0].connectPath(parallelPath[1].reverse())
-                # parallelPath[0].close()
-                # pathList.append(parallelPath[0])
-                # break
             elif preDir == '8' and nectDir == '*':
                 STROKE = stroke_8(strokeWidth, 'above')
 
@@ -1656,7 +1971,9 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                     currPos + tempNormal * STROKE['v'][0]
                 ]
                 tempPos.append(bs.intersection(tempPos[0], tempPos[0]+bs.Point(10,0), tempPos[1], tempPos[1] - ctrl.pos))
-                parallelPath[0].append(angleInterpolation(tempPos[0], 0.8, tempPos[2], tempPos[1], 1))
+                tempCtrl = angleInterpolation(tempPos[0], 0.8, tempPos[2], tempPos[1], 1)
+                tempCtrl = tempCtrl.radianSegmentation(abs((tempPos[1] - tempPos[2]).radian()) / 2)[0]
+                parallelPath[0].extend(tempCtrl)
                 parallelPath[0].connect(tempNormal * -STROKE['v'][0] * 2)
 
                 tempPos = [
@@ -1674,25 +1991,39 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
         elif dir == '4':
             STROKE = stroke_4(strokeWidth, 'hook')
             expInfo = extendedInfo(bpath.posIn(nectIndex), bpath[index].pos, npath, index, cInfo, strokeWidth)
-            pathLen = -ctrl.pos.x + expInfo.get('extend', 9999)
+            pathLen = min(-ctrl.pos.x + expInfo.get('extend', 9999), unit.x*2.5)
             
+            serif = 'yes'
             if pathLen >= STROKE['length']:
                 pathLen = STROKE['length']
-            elif pathLen < STROKE['length']/2:
-                raise 'undefine'
+            elif pathLen < STROKE['length']*.6:
+                serif = 'small'
             
             if preDir == '2' and nectDir == '*':
-                parallelPath[0][-1].pos.y -= STROKE['v'][0]
-                parallelPath[0].append(ellipticalArc(-STROKE['h'][0], STROKE['v'][1], False))
-                parallelPath[0].append(angleInterpolation(bs.Point(), STROKE['ratio'][0], bs.Point(0, STROKE['v'][2]-STROKE['v'][1]), bs.Point(STROKE['h'][0]-STROKE['length'], STROKE['v'][2]-STROKE['v'][1]), STROKE['ratio'][1]))
-                parallelPath[0].connect(bs.Point(0, -STROKE['v'][2]))
-                parallelPath[1][-1].pos.y -= STROKE['v'][0] + STROKE['h'][1]
-                parallelPath[1].append(ellipticalArc(-STROKE['h'][1], STROKE['h'][1], False))
-                parallelPath[1].connect(parallelPath[0].endPos() - parallelPath[1].endPos())
-                
+                if serif == 'yes':
+                    parallelPath[0][-1].pos.y -= STROKE['v'][0]
+                    parallelPath[0].append(ellipticalArc(-STROKE['h'][0], STROKE['v'][1], False))
+                    parallelPath[0].append(angleInterpolation(bs.Point(), STROKE['ratio'][0], bs.Point(0, STROKE['v'][2]-STROKE['v'][1]), bs.Point(STROKE['h'][0]-pathLen, STROKE['v'][2]-STROKE['v'][1]), STROKE['ratio'][1]))
+                    parallelPath[0].connect(bs.Point(0, -STROKE['v'][2]))
+
+                    if parallelPath[1][-1].pos.y > STROKE['v'][0] + STROKE['h'][1]:
+                        parallelPath[1][-1].pos.y -= STROKE['v'][0] + STROKE['h'][1]
+                        parallelPath[1].append(ellipticalArc(-STROKE['h'][1], STROKE['h'][1], False))
+                    else:
+                        parallelPath[1].popBack()
+                        parallelPath[1].append(ellipticalArc(-STROKE['h'][1], parallelPath[0].endPos().y-parallelPath[1].endPos().y, False))
+                    parallelPath[1].connect(parallelPath[0].endPos() - parallelPath[1].endPos())
+                else:
+                    parallelPath[0].append(ellipticalArc(-strokeWidth.x, strokeWidth.y/2 + STROKE['v'][3], False))
+                    tempPos = parallelPath[0].endPos() - parallelPath[1].endPos() - bs.Point(0, STROKE['v'][3])
+                    parallelPath[1][-1].pos.y += strokeWidth.y/2 + STROKE['v'][3]
+
             elif preDir == '3' and nectDir == '*':
+                if serif == 'small':
+                    raise 'undefine'
+
                 parallelPath[0].append(ellipticalArc(-STROKE['h'][0], STROKE['v'][1], False))
-                parallelPath[0].append(angleInterpolation(bs.Point(), STROKE['ratio'][0], bs.Point(0, STROKE['v'][2]-STROKE['v'][1]), bs.Point(STROKE['h'][0]-STROKE['length'], STROKE['v'][2]-STROKE['v'][1]), STROKE['ratio'][1]))
+                parallelPath[0].append(angleInterpolation(bs.Point(), STROKE['ratio'][0], bs.Point(0, STROKE['v'][2]-STROKE['v'][1]), bs.Point(STROKE['h'][0]-pathLen, STROKE['v'][2]-STROKE['v'][1]), STROKE['ratio'][1]))
                 parallelPath[0].connect(bs.Point(0, -STROKE['v'][2]))
                 
                 tempVal = parallelPath[1][-1].lengthAt(1)
@@ -1716,16 +2047,18 @@ def toStrokes(bpath, cInfo, npath, corrList, char):
                 pathLen = -ctrl.pos.y + expInfo.get('extend', 9999)
                 
                 if pathLen > STROKE['length']:
-                    pathLen = STROKE['length']
-                else:
-                    raise 'undefine'
+                    pass
+                # elif pathLen / STROKE['length'] < 0.5:
+                #     raise 'undefine'
+                pathLen = min(STROKE['length'], unit.y*2 - strokeWidth.y)
             
                 tempOffset = bs.Point(STROKE['h'][0]/2, 0)
-                currPos.y = max(prePos.y-pathLen, currPos.y)
+                # currPos.y = min(currPos.y, prePos.y-pathLen)
+                currPos.y = prePos.y-pathLen
 
                 tempPos = currPos-tempOffset-parallelPath[0].endPos()
                 tempCtrl = angleInterpolation(bs.Point(), 0.85, bs.Point(tempPos.x, 0), tempPos, 1.0)
-                parallelPath[0].append(tempCtrl)
+                parallelPath[0].extend(tempCtrl.radianSegmentation(math.pi/4)[0])
 
                 tempPos = currPos+tempOffset-parallelPath[1].endPos()
                 tempCtrl = bs.BezierCtrl(p1=bs.Point(-10,0), p2=bs.Point(tempPos.x, -10), pos=tempPos)
@@ -1827,7 +2160,7 @@ def importGlyphs():
     num = len(data)
     count = 0
     
-    for name, attrs in reversed(data.items()):
+    for name, attrs in data.items():
         char = name
         code = ord(char)
         if code < 128:
@@ -1899,14 +2232,15 @@ def importGlyphs():
     print("\n%s: The Font has %d glyphs" % (font.fontname, count + symCount - len(errorList)))
     print("Generate font file in %s\n" % (font.fontname + ".otf"))
     
-    # font.generate(font.fontname + ".otf")
-    font.generate(font.fontname + ".ttf")
+    font.generate(font.fontname + ".otf")
+    # font.generate(font.fontname + ".ttf")
     font.save(font.fontname + ".sfd")
     font.close()
 
     os.remove(TEMP_GLYPH_FILE)
 
 if __name__ == '__main__':
-    testChar('单') # 辶并犮卵壹辶禸戋犮禸弗 或癸 𤴔𣥂𡨄𠃓龰隺阝
+    importGlyphs()
+    testChar('乾') # 今学龸灬夬父幺万方乙𠂆子八丸奂及井夫九失工车亼象力𠂇阝纟龰金生夬矛予豕
     # testAllChar()
-    # importGlyphs()
+# 啊嗉愫瘰祁穵素累縠耶蓄螂邗邙邝邡邢那邦邪邬邮邯邰邳邵邶邸邹邺邻郁郄郅郊郏郐郑郗郢郤郧郭郾郿酃阞队阡防阳阶阼阽陉陌骡
