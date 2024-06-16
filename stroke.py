@@ -244,13 +244,15 @@ def dot_proto(strokeWidth):
 def comp_dot(ctrl, pos, strokeWidth, sym, fExtend=0, bExtend=0):
     comp = dot_proto(strokeWidth)
 
-    if sym == '3' or sym == '1':
-        if ctrl.lengthAt(1) < 128:
-            sCtrl = bs.BezierCtrl(bs.Point(0, 100))
-            xcenter = 0.5
-        else:
-            sCtrl = bs.BezierCtrl.threePointCtrl(bs.Point(), bs.Point(24, 42), bs.Point(0, 100))
-            xcenter = 0.64
+    if ctrl.lengthAt(1) < 128:
+        sCtrl = bs.BezierCtrl(bs.Point(0, 100))
+        xcenter = 0.5
+    elif sym == '3' or sym == '1':
+        sCtrl = bs.BezierCtrl.threePointCtrl(bs.Point(), bs.Point(24, 42), bs.Point(0, 100))
+        xcenter = 0.64
+    elif sym == 'l':
+        sCtrl = bs.BezierCtrl.threePointCtrl(bs.Point(), bs.Point(-24, 42), bs.Point(0, 100))
+        xcenter = 0.36
     else:
         raise 'undefine'
     
